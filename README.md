@@ -4,6 +4,10 @@
 
 [![ci](https://github.com/dodongwon33/aws-serverless-selfhealing/actions/workflows/deploy.yml/badge.svg)](https://github.com/dodongwon33/aws-serverless-selfhealing/actions/workflows/deploy.yml)
 
+![아키텍처](docs/images/architecture.png)
+
+<details><summary>Mermaid 버전</summary>
+
 ```mermaid
 flowchart LR
   C[Client] -->|x-api-key| AG[API Gateway REST<br/>쿼터 5만/월 · 5rps]
@@ -17,6 +21,8 @@ flowchart LR
   B[Budgets $10] -->|100%| K[killswitch λ<br/>API 스로틀 0]
   GH[GitHub Actions<br/>OIDC] -->|apply · 카나리 배포| CD
 ```
+
+</details>
 
 ## 핵심 포인트
 
