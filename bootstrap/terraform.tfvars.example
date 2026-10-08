@@ -1,0 +1,5 @@
+github_repo = "dodongwon33/aws-serverless-selfhealing"
+
+# 계정에 token.actions.githubusercontent.com OIDC Provider가 이미 있으면 false
+# 확인: aws iam list-open-id-connect-providers
+create_oidc_provider = false

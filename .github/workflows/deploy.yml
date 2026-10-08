@@ -1,0 +1,166 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      unfreeze:
+        description: "자동 롤백/킬스위치로 걸린 배포 동결 해제 (원인 수정 후)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  TF_DIR: infra/environments/dev
+  TF_VERSION: "1.16.4"
+  PARAM_PREFIX: /selfheal/dev
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check . && ruff format --check .
+      - run: pytest
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - run: terraform fmt -check -recursive
+
+  deploy:
+    needs: test
+    # AWS 연결(bootstrap + repo 변수 등록) 전에는 테스트만 돌고 배포는 건너뛴다
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy freeze check
+        env:
+          UNFREEZE: ${{ inputs.unfreeze }}
+        run: |
+          FREEZE=$(aws ssm get-parameter --name "$PARAM_PREFIX/deploy-freeze" --query Parameter.Value --output text 2>/dev/null || echo false)
+          if [ "$UNFREEZE" = "true" ]; then
+            aws ssm put-parameter --name "$PARAM_PREFIX/deploy-freeze" --value false --overwrite >/dev/null
+            echo "deploy freeze released by ${GITHUB_ACTOR}"
+            FREEZE=false
+          fi
+          if [ "$FREEZE" = "true" ]; then
+            echo "::error::배포 동결 중 (자동 롤백 또는 예산 킬스위치 발동). 원인 수정 후 workflow_dispatch(unfreeze=true)로 재실행하세요."
+            exit 1
+          fi
+
+      - name: Terraform apply (infra)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          terraform apply -input=false -auto-approve
+
+      - name: Read outputs
+        id: out
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          API_KEY=$(terraform output -raw api_key)
+          echo "::add-mask::$API_KEY"
+          {
+            echo "function=$(terraform output -raw function_name)"
+            echo "alias=$(terraform output -raw alias_name)"
+            echo "app=$(terraform output -raw codedeploy_app)"
+            echo "group=$(terraform output -raw codedeploy_group)"
+            echo "url=$(terraform output -raw api_url)"
+            echo "api_key=$API_KEY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish new version
+        id: version
+        env:
+          FUNCTION: ${{ steps.out.outputs.function }}
+          ALIAS: ${{ steps.out.outputs.alias }}
+        run: |
+          (cd src/app && zip -qr "$GITHUB_WORKSPACE/app.zip" . -x '*__pycache__*')
+          aws lambda update-function-code --function-name "$FUNCTION" --zip-file fileb://app.zip >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION"
+          NEW=$(aws lambda publish-version --function-name "$FUNCTION" --description "${GITHUB_SHA::7}" --query Version --output text)
+          CURRENT=$(aws lambda get-alias --function-name "$FUNCTION" --name "$ALIAS" --query FunctionVersion --output text)
+          echo "current=$CURRENT new=$NEW"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Canary deploy (CodeDeploy 10% → 5분 → 100%, 알람 시 자동 롤백)
+        if: steps.version.outputs.new != steps.version.outputs.current
+        env:
+          FUNCTION: ${{ steps.out.outputs.function }}
+          ALIAS: ${{ steps.out.outputs.alias }}
+          APP: ${{ steps.out.outputs.app }}
+          GROUP: ${{ steps.out.outputs.group }}
+          CURRENT: ${{ steps.version.outputs.current }}
+          NEW: ${{ steps.version.outputs.new }}
+          API_URL: ${{ steps.out.outputs.url }}
+          API_KEY: ${{ steps.out.outputs.api_key }}
+        run: |
+          APPSPEC=$(jq -cn --arg f "$FUNCTION" --arg a "$ALIAS" --arg c "$CURRENT" --arg n "$NEW" \
+            '{version: 0.0, Resources: [{app: {Type: "AWS::Lambda::Function", Properties: {Name: $f, Alias: $a, CurrentVersion: $c, TargetVersion: $n}}}]}')
+          jq -n --arg app "$APP" --arg group "$GROUP" --arg spec "$APPSPEC" \
+            '{applicationName: $app, deploymentGroupName: $group, revision: {revisionType: "AppSpecContent", appSpecContent: {content: $spec}}}' > deployment.json
+          DEPLOYMENT_ID=$(aws deploy create-deployment --cli-input-json file://deployment.json --query deploymentId --output text)
+          echo "deployment: $DEPLOYMENT_ID"
+          # 저트래픽 환경에선 카나리 동안 요청이 없으면 알람이 판단할 데이터가 없다 → 합성 트래픽 (2rps × 7분 ≈ 840건)
+          python scripts/load.py --url "$API_URL" --key "$API_KEY" --rps 2 --duration 420 --quiet &
+          LOAD_PID=$!
+          aws deploy wait deployment-successful --deployment-id "$DEPLOYMENT_ID" || {
+            kill "$LOAD_PID" 2>/dev/null || true
+            aws deploy get-deployment --deployment-id "$DEPLOYMENT_ID" --query 'deploymentInfo.[status,errorInformation]' --output json
+            echo "::error::카나리 실패 — CodeDeploy가 v$CURRENT로 자동 롤백했습니다."
+            exit 1
+          }
+          kill "$LOAD_PID" 2>/dev/null || true
+
+      - name: Smoke test
+        env:
+          API_URL: ${{ steps.out.outputs.url }}
+          API_KEY: ${{ steps.out.outputs.api_key }}
+        run: |
+          curl -fsS --retry 3 --retry-all-errors -H "x-api-key: $API_KEY" "$API_URL/health"
+          ID=$(curl -fsS -H "x-api-key: $API_KEY" -H 'Content-Type: application/json' \
+            -d '{"payload":{"smoke":true}}' "$API_URL/items" | jq -r .id)
+          curl -fsS -H "x-api-key: $API_KEY" "$API_URL/items/$ID" | jq -e '.payload.smoke == true'
+
+      - name: Promote to stable
+        if: steps.version.outputs.new != steps.version.outputs.current
+        env:
+          NEW: ${{ steps.version.outputs.new }}
+        run: |
+          STABLE=$(aws ssm get-parameter --name "$PARAM_PREFIX/stable-version" --query Parameter.Value --output text)
+          aws ssm put-parameter --name "$PARAM_PREFIX/previous-version" --value "$STABLE" --overwrite >/dev/null
+          aws ssm put-parameter --name "$PARAM_PREFIX/stable-version" --value "$NEW" --overwrite >/dev/null
+          echo "stable: v$STABLE → v$NEW"
