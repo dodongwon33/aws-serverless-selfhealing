@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AWS Self-Healing Portfolio</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  :root { --ink:#1b2430; --muted:#5b6675; --line:#d9dee5; --accent:#1f5fbf; --accent-soft:#e8f0fb; --warn:#b4541a; --ok:#1d7a46; --bg:#ffffff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif; font-size:10pt; line-height:1.55; }
+  h1 { font-size:22pt; line-height:1.25; margin:0 0 6px; letter-spacing:-0.3px; }
+  h2 { font-size:13.5pt; margin:0 0 8px; padding-bottom:4px; border-bottom:2px solid var(--ink); }
+  h3 { font-size:11pt; margin:14px 0 6px; color:var(--accent); }
+  p { margin:0 0 8px; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .eyebrow { color:var(--accent); font-weight:700; font-size:9pt; letter-spacing:1px; text-transform:uppercase; }
+  .lead { font-size:11pt; color:var(--muted); margin-bottom:14px; }
+  .meta { font-size:9pt; color:var(--muted); margin-bottom:16px; }
+  .meta a { color:var(--accent); text-decoration:none; }
+  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:12px 0 16px; }
+  .kpi { border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+  .kpi b { display:block; font-size:15pt; line-height:1.2; }
+  .kpi span { font-size:8pt; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; margin:6px 0 10px; font-size:9pt; }
+  th, td { border-bottom:1px solid var(--line); padding:5px 6px; text-align:left; vertical-align:top; }
+  th { background:#f4f6f9; font-weight:700; }
+  td.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .card { border:1px solid var(--line); border-radius:6px; padding:10px 12px; break-inside:avoid; }
+  .card h4 { margin:0 0 4px; font-size:10pt; }
+  .card p, .card li { font-size:9pt; }
+  ul { margin:0 0 8px; padding-left:18px; }
+  li { margin-bottom:3px; }
+  code { font-family:"SF Mono",Menlo,monospace; font-size:8.5pt; background:#f1f3f6; padding:0 3px; border-radius:3px; }
+  .tag { display:inline-block; font-size:7.5pt; font-weight:700; padding:1px 6px; border-radius:3px; margin-right:4px; }
+  .t-crit { background:#fbe9e7; color:#a3301c; }
+  .t-high { background:#fff1e3; color:var(--warn); }
+  .t-mid { background:var(--accent-soft); color:var(--accent); }
+  .note { border-left:3px solid var(--accent); background:var(--accent-soft); padding:8px 10px; font-size:9pt; margin:8px 0; }
+  .status { border-left:3px solid var(--warn); background:#fff6ee; padding:8px 10px; font-size:9pt; margin:8px 0; }
+  .flow { display:flex; align-items:stretch; gap:6px; margin:8px 0 12px; }
+  .flow div { flex:1; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:8.5pt; background:#fafbfc; }
+  .flow div b { display:block; font-size:9pt; color:var(--accent); }
+  svg text { font-family:"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- 1. 개요 -->
+<section class="page">
+  <div class="eyebrow">Cloud Engineering Portfolio</div>
+  <h1>AWS 서버리스 자가복구 &amp; 관측성 플랫폼</h1>
+  <p class="lead">장애를 스스로 감지해 마지막 정상 버전으로 되돌리고, 어떤 경우에도 예산을 넘지 않도록 설계한 서버리스 API</p>
+  <p class="meta">GitHub <a href="https://github.com/dodongwon33/aws-serverless-selfhealing">github.com/dodongwon33/aws-serverless-selfhealing</a> · Terraform · GitHub Actions · Python · 서울 리전</p>
+
+  <div class="kpis">
+    <div class="kpi"><b>2단</b><span>자동 롤백<br>(카나리 + 런타임)</span></div>
+    <div class="kpi"><b>≈ $0.6</b><span>최악 월 비용<br>(무료 티어 미적용)</span></div>
+    <div class="kpi"><b>31건</b><span>초안 설계 결함<br>발견 · 수정</span></div>
+    <div class="kpi"><b>0개</b><span>장기 Access Key<br>(OIDC)</span></div>
+    <div class="kpi"><b>59개</b><span>Terraform 리소스<br>(모듈 9개)</span></div>
+  </div>
+
+  <h2>문제 정의</h2>
+  <p>개인이 운영하는 서비스는 장애를 24시간 지켜볼 사람이 없고, 실수 한 번(트래픽 폭주, 잘못된 배포)이 곧바로 청구서 폭탄이나 장시간 장애로 이어진다. 이 프로젝트의 목표는 세 가지다.</p>
+  <ul>
+    <li><b>보이게 한다</b> — 로그·메트릭·트레이스로 "무엇이, 어느 버전에서, 왜" 실패했는지 추적</li>
+    <li><b>스스로 되돌린다</b> — 사람의 개입 없이 수 분 안에 마지막 정상 버전으로 복구하고, 같은 결함이 다시 배포되지 않게 막음</li>
+    <li><b>예산을 넘지 않는다</b> — "무료 티어라 괜찮다"가 아니라, 공격·실수 상황에서도 비용 상한이 구조적으로 보장되게 함</li>
+  </ul>
+
+  <h2>핵심 설계 결정</h2>
+  <table>
+    <tr><th style="width:24%">결정</th><th>이유</th></tr>
+    <tr><td>REST API (HTTP API 아님)</td><td>X-Ray 트레이싱과 사용량 계획(월 쿼터)은 REST 전용. 쿼터 상한 기준 요금 차이는 월 $0.1 미만</td></tr>
+    <tr><td>API → Lambda <b>alias</b> 연결</td><td><code>$LATEST</code>를 호출하면 롤백이 트래픽에 반영되지 않음. alias 하나로 카나리·롤백을 모두 제어</td></tr>
+    <tr><td>CodeDeploy 카나리 + 직접 구현 remediation</td><td>배포 시점은 관리형 서비스에 맡기고, 배포 이후(카나리를 우회한 핫픽스, 운영 중 드러난 결함)는 직접 구현해 둘 다 커버</td></tr>
+    <tr><td>코드 소유권 분리</td><td>Terraform은 함수 설정만, CI는 코드·버전만. 같은 리소스를 두 도구가 덮어쓰는 드리프트 제거</td></tr>
+    <tr><td>쿼터 = 비용 상한</td><td>스로틀은 속도 제한일 뿐 총량 제한이 아님(10rps면 월 2,592만 건 ≈ $90). 월 5만 건 쿼터로 API 비용 상한 ≈ $0.2</td></tr>
+    <tr><td>권한 경계(Permissions Boundary)</td><td>IaC 배포 역할이 "관리자 역할을 만들어 탈취"하는 권한 상승 경로를 구조적으로 차단</td></tr>
+  </table>
+
+  <h2>기술 스택</h2>
+  <p>API Gateway · Lambda · DynamoDB · CloudWatch(Logs/Metrics/Alarms/Dashboard/Logs Insights) · X-Ray · EventBridge · SNS · CodeDeploy · SSM Parameter Store · AWS Budgets · IAM OIDC · Terraform 1.10+ (AWS provider 6.x) · Python 3.12 · Powertools for AWS Lambda · GitHub Actions · pytest / moto</p>
+</section>
+
+<!-- 2. 아키텍처 -->
+<section class="page">
+  <h2>아키텍처</h2>
+  <svg viewBox="0 -6 724 476" width="100%" role="img" aria-label="아키텍처 다이어그램">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1b2430"/></marker>
+      <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b4541a"/></marker>
+      <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f5fbf"/></marker>
+    </defs>
+    <style>
+      .bx{fill:#fff;stroke:#1b2430;stroke-width:1.2}
+      .bxa{fill:#e8f0fb;stroke:#1f5fbf;stroke-width:1.2}
+      .bxw{fill:#fff6ee;stroke:#b4541a;stroke-width:1.2}
+      .t{font-size:12px;font-weight:700;fill:#1b2430;text-anchor:middle}
+      .s{font-size:10px;fill:#5b6675;text-anchor:middle}
+      .l{font-size:10px;fill:#5b6675}
+      .ln{stroke:#1b2430;stroke-width:1.3;fill:none}
+      .lr{stroke:#b4541a;stroke-width:1.3;fill:none}
+      .lb{stroke:#1f5fbf;stroke-width:1.3;fill:none;stroke-dasharray:5 3}
+      .zone{fill:none;stroke:#d9dee5;stroke-dasharray:4 4}
+    </style>
+
+    <!-- request path -->
+    <text x="12" y="18" class="l" font-weight="700">요청 경로</text>
+    <rect class="bx" x="12" y="30" width="96" height="54" rx="6"/><text class="t" x="60" y="54">Client</text><text class="s" x="60" y="70">x-api-key</text>
+    <rect class="bx" x="150" y="30" width="150" height="54" rx="6"/><text class="t" x="225" y="50">API Gateway (REST)</text><text class="s" x="225" y="65">쿼터 5만/월 · 5rps</text><text class="s" x="225" y="78">액세스 로그 · X-Ray</text>
+    <rect class="bxa" x="342" y="30" width="150" height="54" rx="6"/><text class="t" x="417" y="50">Lambda alias live</text><text class="s" x="417" y="65">Powertools 로그/트레이스</text><text class="s" x="417" y="78">장애 주입 FAULT_RATE</text>
+    <rect class="bx" x="534" y="30" width="170" height="54" rx="6"/><text class="t" x="619" y="54">DynamoDB</text><text class="s" x="619" y="70">On-Demand · PITR</text>
+    <line class="ln" x1="108" y1="57" x2="148" y2="57" marker-end="url(#a)"/>
+    <line class="ln" x1="300" y1="57" x2="340" y2="57" marker-end="url(#a)"/>
+    <line class="ln" x1="492" y1="57" x2="532" y2="57" marker-end="url(#a)"/>
+
+    <!-- observability -->
+    <rect class="bx" x="150" y="130" width="342" height="54" rx="6"/><text class="t" x="321" y="152">CloudWatch Metrics · Logs(14일) · X-Ray</text><text class="s" x="321" y="170">대시보드 1 · 알람 5 · Logs Insights 저장 쿼리 · 커스텀 메트릭 0</text>
+    <line class="ln" x1="225" y1="84" x2="225" y2="128" marker-end="url(#a)"/>
+    <line class="ln" x1="417" y1="84" x2="417" y2="128" marker-end="url(#a)"/>
+
+    <!-- alarm -->
+    <rect class="bxw" x="196" y="222" width="250" height="50" rx="6"/><text class="t" x="321" y="242">CloudWatch Alarm</text><text class="s" x="321" y="259">5xx율 &gt; 5% (3분) · Lambda Errors ≥ 3 (2분)</text>
+    <line class="ln" x1="321" y1="184" x2="321" y2="220" marker-end="url(#a)"/>
+
+    <!-- responders -->
+    <rect class="bxw" x="12" y="320" width="190" height="64" rx="6"/><text class="t" x="107" y="342">CodeDeploy 카나리</text><text class="s" x="107" y="358">10% → 5분 → 100%</text><text class="s" x="107" y="372">알람 시 자동 롤백 (배포 시점)</text>
+    <rect class="bxw" x="226" y="320" width="190" height="64" rx="6"/><text class="t" x="321" y="342">EventBridge → remediation λ</text><text class="s" x="321" y="358">alias live → stable / previous</text><text class="s" x="321" y="372">deploy-freeze (런타임)</text>
+    <rect class="bx" x="440" y="320" width="120" height="64" rx="6"/><text class="t" x="500" y="348">SNS</text><text class="s" x="500" y="364">메일 알림</text>
+    <path class="lr" d="M250 272 L130 318" marker-end="url(#r)"/>
+    <line class="lr" x1="321" y1="272" x2="321" y2="318" marker-end="url(#r)"/>
+    <path class="lr" d="M400 272 L485 318" marker-end="url(#r)"/>
+    <text class="l" x="110" y="292">카나리 중</text><text class="l" x="328" y="300">운영 중</text>
+
+    <!-- CI -->
+    <rect class="bxa" x="12" y="130" width="120" height="54" rx="6"/><text class="t" x="72" y="150">GitHub Actions</text><text class="s" x="72" y="165">OIDC · PR=plan</text><text class="s" x="72" y="178">main=deploy</text>
+    <path class="lb" d="M72 184 L72 318" marker-end="url(#b)"/>
+    <text class="l" x="78" y="250" fill="#1f5fbf">apply ·</text><text class="l" x="78" y="263" fill="#1f5fbf">버전 발행</text>
+
+    <!-- budget -->
+    <rect class="bxw" x="584" y="130" width="120" height="54" rx="6"/><text class="t" x="644" y="150">AWS Budgets</text><text class="s" x="644" y="165">$10/월 · 50% · 80%</text><text class="s" x="644" y="178">100% → killswitch</text>
+    <path class="lr" d="M644 130 L 644 112 L 714 112 L 714 14 L 262 14 L 262 28" marker-end="url(#r)"/>
+    <text class="l" x="520" y="10" fill="#b4541a">예산 100% 초과 시 API 스로틀 0</text>
+
+    <rect class="zone" x="4" y="406" width="712" height="58" rx="6"/>
+    <text class="l" x="16" y="426" font-weight="700">상태 (SSM 표준 파라미터, 무료)</text>
+    <text class="l" x="16" y="444">stable-version: 카나리+스모크 통과 버전 · previous-version: 직전 stable · deploy-freeze: 롤백/킬스위치 후 CI 배포 차단</text>
+    <text class="l" x="16" y="458">CI가 배포 성공 시 previous←stable, stable←new 로 승격 · remediation이 롤백 시 stable←대상, previous←none (플래핑 방지)</text>
+  </svg>
+
+  <h3>컴포넌트</h3>
+  <table>
+    <tr><th style="width:22%">구성</th><th>설정</th><th style="width:26%">비고</th></tr>
+    <tr><td>API Gateway</td><td><code>GET /health</code> · <code>POST /items</code> · <code>GET /items/{id}</code>, API 키 필수, 스로틀 5rps/버스트 10</td><td>실행 로그·상세 메트릭 OFF (비용)</td></tr>
+    <tr><td>Lambda (API)</td><td>Python 3.12, 256MB, Powertools 레이어(버전 고정), X-Ray Active, 본문 10KB 제한</td><td>설정=Terraform, 코드=CI</td></tr>
+    <tr><td>Lambda (보조)</td><td>remediation(알람→롤백), killswitch(예산→차단), 128MB</td><td>권한 경계 적용</td></tr>
+    <tr><td>DynamoDB</td><td><code>items</code>(PK id), On-Demand, PITR, AWS 소유 키 암호화</td><td>월 1원 미만</td></tr>
+    <tr><td>Terraform</td><td>bootstrap(state·OIDC·역할) + dev 환경, 모듈 9개, S3 네이티브 락</td><td>DynamoDB 락 테이블 불필요</td></tr>
+  </table>
+</section>
+
+<!-- 3. 자가복구 -->
+<section class="page">
+  <h2>자가복구 — 2단 자동 롤백</h2>
+  <p>롤백 기회는 두 번이다. <b>배포하는 순간</b>에는 CodeDeploy가 트래픽 10%로 새 버전을 5분간 관찰하고, <b>배포 이후</b>에는 알람이 EventBridge를 거쳐 직접 구현한 remediation 함수를 깨운다.</p>
+
+  <h3>런타임 remediation 의사결정</h3>
+  <div class="flow">
+    <div><b>1. 필터</b>ALARM 상태가 아니면 무시</div>
+    <div><b>2. 위임</b>카나리 진행 중 / 최근 20분 내 실패 → CodeDeploy 소관</div>
+    <div><b>3. 중복 방지</b>이미 동결 + live=stable → 추가 조치 없이 알림</div>
+    <div><b>4. 대상 결정</b>stable / previous / 수동</div>
+    <div><b>5. 실행</b>alias 갱신 → 상태 갱신 → 배포 동결 → 메일</div>
+  </div>
+  <table>
+    <tr><th>상황</th><th>버전 상태</th><th>처리</th></tr>
+    <tr><td>카나리를 우회한 핫픽스가 장애</td><td>live=7, stable=5</td><td>v5로 롤백</td></tr>
+    <tr><td>검증을 통과한 버전이 운영 중 장애</td><td>live=stable=5, previous=4</td><td>v4로 롤백, previous 비움</td></tr>
+    <tr><td>되돌아갈 버전 없음 (최초 배포)</td><td>live=stable, previous=none</td><td>롤백 없이 동결 + "수동 조치 필요" 메일</td></tr>
+    <tr><td>두 알람(5xx율·Errors) 동시 발생</td><td>첫 실행이 이미 롤백·동결</td><td>두 번째 실행은 <code>already_frozen</code></td></tr>
+  </table>
+
+  <h3>설계하며 막은 실패 모드</h3>
+  <div class="grid2">
+    <div class="card"><h4>연쇄 롤백</h4><p>CodeDeploy가 먼저 롤백을 끝낸 뒤 알람 이벤트가 늦게 도착하면 "진행 중 배포 없음"으로 보여, 정상 버전을 한 단계 더 되돌릴 수 있다 → 최근 20분 내 실패·중단 배포도 CodeDeploy 소관으로 판단.</p></div>
+    <div class="card"><h4>플래핑</h4><p>롤백 후 같은 알람이 다시 울리면 나쁜 버전으로 되돌아갈 수 있다 → 롤백된 버전을 새 stable로, previous는 비워 되돌아갈 경로를 끊음.</p></div>
+    <div class="card"><h4>재배포 사고</h4><p>자동 롤백 직후 다음 push가 같은 결함을 다시 배포 → <code>deploy-freeze</code>로 CI 차단, 원인 수정 후 수동 해제.</p></div>
+    <div class="card"><h4>저트래픽 카나리</h4><p>개인 서비스는 평소 요청이 0건이라 카나리 5분 동안 알람이 판단할 데이터가 없다 → 카나리 동안 CI가 합성 트래픽(2rps × 7분) 발생, 알람은 분당 20건 미만이면 0%로 처리해 오탐 방지.</p></div>
+  </div>
+
+  <h3>복구를 증명하는 장애 시연</h3>
+  <p>Lambda 버전은 환경변수까지 스냅샷한다는 점을 이용했다. <code>scripts/chaos_bad_release.sh</code>는 <code>FAULT_RATE=0.5</code>인 버전을 발행해 live에 직접 올리고(카나리 우회), 3rps 부하를 건다. 예상 흐름은 다음과 같다.</p>
+  <div class="flow">
+    <div><b>0분</b>장애 버전 live 반영, 응답의 약 50%가 502</div>
+    <div><b>~3분</b>5xx율 알람 ALARM</div>
+    <div><b>~3.5분</b>EventBridge → remediation → alias를 stable로</div>
+    <div><b>~4분</b>200 응답 복귀, 메일 수신, 배포 동결</div>
+  </div>
+  <div class="status">구현 상태: 코드와 IaC는 완성됐고 단위 테스트·정적 검증·실제 계정 대상 <code>terraform plan</code>까지 통과했다. 실제 배포와 장애 시연 결과(대시보드 캡처, 복구 시간 측정)는 배포 후 이 섹션에 추가할 예정이다.</div>
+</section>
+
+<!-- 4. CI/CD + 보안 -->
+<section class="page">
+  <h2>CI/CD</h2>
+  <table>
+    <tr><th style="width:16%">워크플로</th><th style="width:14%">트리거</th><th>단계</th></tr>
+    <tr><td><code>ci.yml</code></td><td>Pull Request</td><td>ruff · pytest · <code>terraform fmt/validate</code> → 읽기 전용 역할로 <code>plan</code> → PR 코멘트</td></tr>
+    <tr><td><code>deploy.yml</code></td><td>main push · 수동</td><td>테스트 → 배포 동결 확인 → <code>terraform apply</code> → 버전 발행 → CodeDeploy 카나리(합성 트래픽 포함) → 스모크(health + 쓰기/읽기 왕복) → stable 승격</td></tr>
+  </table>
+  <p>AWS 연결 전(저장소 변수 미등록)에는 배포 job이 자동으로 건너뛰어지고 테스트만 실행된다. 동시 배포는 <code>concurrency</code>로 직렬화했다.</p>
+
+  <h2 style="margin-top:16px">보안</h2>
+  <div class="grid2">
+    <div class="card"><h4>장기 Access Key 0개</h4><p>GitHub OIDC로 실행마다 임시 자격증명을 발급한다. 신뢰 정책의 <code>sub</code> 클레임으로 역할을 분리했다.</p>
+      <ul><li><code>repo:…:ref:refs/heads/main</code> → 배포 역할</li><li><code>repo:…:pull_request</code> → 읽기 전용 plan 역할</li></ul></div>
+    <div class="card"><h4>권한 경계로 권한 상승 차단</h4><p>Terraform 배포 역할은 IAM 역할을 만들 수 있어야 하므로, 그대로 두면 관리자 역할을 만들어 탈취할 수 있다. 배포 역할은 <code>iam:PermissionsBoundary</code> 조건을 만족하는 역할만 <code>/selfheal/</code> path에 생성할 수 있고, 경계를 제거하거나 bootstrap 역할을 수정할 수 없다.</p></div>
+    <div class="card"><h4>리소스 스코프</h4><p>Lambda·DynamoDB·SNS·SSM·CloudWatch·CodeDeploy 권한을 <code>selfheal-*</code> ARN으로 한정했다. API Gateway는 ARN이 랜덤 ID라 리전 단위로 한정했다(알려진 한계).</p></div>
+    <div class="card"><h4>비밀 정보 관리</h4><p>알림 메일은 GitHub Secret → <code>TF_VAR</code>로 주입하고 <code>sensitive</code>로 표시해 PR plan 코멘트에 노출되지 않게 했다. API 키는 CI에서 마스킹한다. state 버킷은 버전관리·SSE-S3·퍼블릭 차단·TLS 강제를 적용했다.</p></div>
+  </div>
+  <div class="note">SNS를 암호화하지 않은 것은 의도한 선택이다. CloudWatch 알람은 AWS 관리형 키(aws/sns)로 암호화된 토픽에 발행할 수 없고, 고객 관리형 KMS 키는 월 $1로 예산 대비 과하다. 토픽에는 알람 메타데이터만 흐른다.</div>
+</section>
+
+<!-- 5. 비용 -->
+<section class="page">
+  <h2>비용 설계 — "무료 티어"가 아니라 "상한"</h2>
+  <p>2025년 7월 프리티어 개편 이후 기존 계정은 12개월 무료 혜택(API Gateway 등)이 만료됐을 수 있다. 그래서 <b>무료 티어가 전혀 없다고 가정하고</b>, 쿼터 월 5만 건을 전부 소진하는 최악의 경우로 계산했다.</p>
+  <table>
+    <tr><th>항목</th><th>산정 근거</th><th class="num">월</th></tr>
+    <tr><td>API Gateway REST</td><td>5만 건 × 약 $4/백만</td><td class="num">$0.20</td></tr>
+    <tr><td>Lambda</td><td>요청 $0.2/백만 + 0.25GB × 0.2초 × 5만</td><td class="num">$0.05</td></tr>
+    <tr><td>DynamoDB On-Demand</td><td>쓰기 약 1만 건, 저장 수 MB</td><td class="num">$0.02</td></tr>
+    <tr><td>CloudWatch Logs</td><td>수집 약 0.1GB × $0.76</td><td class="num">$0.08</td></tr>
+    <tr><td>X-Ray</td><td>기본 샘플링, 최대 5만 트레이스 × $5/백만</td><td class="num">$0.25</td></tr>
+    <tr><td>알람 5 · 대시보드 1 · 저장 쿼리</td><td>상시 무료 한도(알람 10 · 대시보드 3) 이내</td><td class="num">$0</td></tr>
+    <tr><td>S3 · SSM · EventBridge · SNS · CodeDeploy · Budgets</td><td>무료 또는 극소. Budgets는 Budget Action 미사용이라 무료</td><td class="num">~$0.01</td></tr>
+    <tr><th colspan="2">합계 (최악)</th><th class="num">≈ $0.6 (약 900원)</th></tr>
+  </table>
+
+  <h3>다층 예산 방어 — AWS에는 하드 지출 상한이 없다</h3>
+  <div class="flow">
+    <div><b>① 쿼터</b>사용량 계획 월 5만 건 = 요청 수 자체의 상한 (실질적 비용 상한)</div>
+    <div><b>② 조기 경보</b>Budgets $10(계정 전체): 실제 50% · 예측 80% 메일</div>
+    <div><b>③ 킬스위치</b>실제 100% → SNS → Lambda → API 스로틀 0 + 배포 동결</div>
+  </div>
+  <p>킬스위치는 Budget Action(유료 가능)이 아니라 SNS 알림 → Lambda로 구현해 추가 비용이 없다. Budgets 데이터는 수 시간 지연되므로 킬스위치는 마지막 안전망이고, 실질적인 상한은 ①이다.</p>
+
+  <h3>의도적으로 쓰지 않은 것</h3>
+  <table>
+    <tr><th style="width:34%">제외</th><th>이유</th></tr>
+    <tr><td>NAT Gateway · VPC 내 Lambda</td><td>NAT 하나에 월 약 $43. 이 워크로드는 VPC가 필요 없음</td></tr>
+    <tr><td>API GW 메서드 상세 메트릭</td><td>유료 커스텀 메트릭으로 과금. 스테이지 기본 메트릭으로 충분</td></tr>
+    <tr><td>API GW 실행 로그</td><td>보존기간 무제한 로그 그룹이 자동 생성됨 → 액세스 로그(14일)로 대체</td></tr>
+    <tr><td>고객 관리형 KMS · Secrets Manager</td><td>키당 월 $1, 시크릿당 월 $0.4. 관리할 시크릿이 없음(OIDC)</td></tr>
+    <tr><td>CloudWatch Synthetics · Lambda Insights</td><td>실행·함수당 과금. 합성 트래픽은 CI에서 필요할 때만 발생</td></tr>
+  </table>
+</section>
+
+<!-- 6. 검토 + 검증 -->
+<section class="page">
+  <h2>설계 검토 — 초안의 결함 31건</h2>
+  <p>초안 설계를 그대로 구현하지 않고, 실제 코드로 옮기면서 <code>validate</code>, 실제 계정 대상 <code>plan</code>, 단위 테스트로 검증했다. 그 과정에서 발견한 결함은 다음과 같다(전체 목록은 <code>docs/REVIEW.md</code>).</p>
+  <table>
+    <tr><th style="width:9%">심각도</th><th style="width:38%">초안</th><th>문제 → 수정</th></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>HTTP API + X-Ray 체인 시각화</td><td>X-Ray는 REST API만 지원 → REST 채택</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>"별칭으로 이전 버전 롤백"</td><td>API가 <code>$LATEST</code>를 호출해 롤백이 무효 → alias 통합 + 버전 발행</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>롤백 대상 결정 로직 없음</td><td>stable/previous 상태 관리, 플래핑 방지</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>카나리·알람 기반 검증</td><td>저트래픽이라 알람 데이터 없음 → 합성 트래픽</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>(계정 상태 미확인)</td><td>OIDC Provider가 이미 있어 apply 실패 → 재사용 옵션</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>(구현 중 테스트로 발견)</td><td>DynamoDB Decimal이 문자열로 직렬화 → 커스텀 serializer</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>"초당 10건 스로틀로 비용 방지"</td><td>총량 제한이 아님(최악 약 $90) → 쿼터 + Budgets + 킬스위치</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>"최소권한 IAM"</td><td>IaC 역할의 권한 상승 경로 → 권한 경계</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>자동 롤백 + CI/CD</td><td>재배포 사고·이중/연쇄 롤백 → 배포 동결, CodeDeploy 위임</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>로그·메트릭 수집</td><td>상세 메트릭 과금, 실행 로그 무제한 보존 → OFF</td></tr>
+    <tr><td><span class="tag t-mid">중간</span></td><td>DynamoDB 쓰로틀 자동복구</td><td>On-Demand에서는 시연 불가 → 제거</td></tr>
+    <tr><td><span class="tag t-mid">중간</span></td><td>DynamoDB state 락 테이블</td><td>deprecated → S3 네이티브 락</td></tr>
+  </table>
+
+  <h2 style="margin-top:14px">검증</h2>
+  <table>
+    <tr><th>항목</th><th>결과</th></tr>
+    <tr><td>pytest + moto (API 8 · 자동복구 11 · 킬스위치 1)</td><td>20 passed</td></tr>
+    <tr><td>ruff lint / format</td><td>통과</td></tr>
+    <tr><td>terraform fmt / validate (bootstrap, dev)</td><td>통과</td></tr>
+    <tr><td>terraform plan — 실제 AWS 계정, 읽기 전용</td><td>bootstrap 11개 · dev 59개 리소스, 오류 없음</td></tr>
+    <tr><td>실제 배포 · 장애 시연</td><td>예정 (예상 비용: 시연 1회 약 $0.01)</td></tr>
+  </table>
+
+  <h2 style="margin-top:14px">배운 점 · 다음 단계</h2>
+  <ul>
+    <li><b>"무료"는 설계가 아니다.</b> 무료 티어가 아니라 쿼터처럼 구조적인 상한으로 비용을 보장해야 한다.</li>
+    <li><b>자동화는 자기 자신과 경합한다.</b> 관리형 롤백과 직접 구현한 롤백, CI가 서로를 되돌리지 않도록 위임·동결 규칙을 명시해야 한다.</li>
+    <li><b>설계 문서는 코드로 검증해야 한다.</b> 31건 중 다수는 문서만 읽어서는 보이지 않았고, plan과 테스트에서 드러났다.</li>
+    <li>다음 단계: CodeDeploy <code>BeforeAllowTraffic</code> 훅으로 새 버전 사전 검증, Trivy/checkov IaC 스캔, Slack 알림, 운영 환경 계정 분리.</li>
+  </ul>
+</section>
+
+</body>
+</html>
