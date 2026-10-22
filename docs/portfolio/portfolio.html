@@ -47,12 +47,13 @@
 </head>
 <body>
 
+
 <!-- 1. 개요 -->
 <section class="page">
   <div class="eyebrow">Cloud Engineering Portfolio</div>
   <h1>AWS 서버리스 자가복구 &amp; 관측성 플랫폼</h1>
-  <p class="lead">장애를 스스로 감지해 마지막 정상 버전으로 되돌리고, 어떤 경우에도 예산을 넘지 않도록 설계한 서버리스 API</p>
-  <p class="meta">GitHub <a href="https://github.com/dodongwon33/aws-serverless-selfhealing">github.com/dodongwon33/aws-serverless-selfhealing</a> · Terraform · GitHub Actions · Python · 서울 리전</p>
+  <p class="lead">장애가 나면 스스로 알아채고 마지막 정상 버전으로 되돌린다. 어떤 경우에도 예산을 넘지 않게 만든 서버리스 API(서버를 직접 관리하지 않는 API)다.</p>
+  <p class="meta">GitHub <a href="https://github.com/dodongwon33/aws-serverless-selfhealing">github.com/dodongwon33/aws-serverless-selfhealing</a> · Terraform(코드로 인프라를 만드는 도구) · GitHub Actions(자동 배포 도구) · Python · 서울 리전</p>
 
   <div class="kpis">
     <div class="kpi"><b>2단</b><span>자동 롤백<br>(카나리 + 런타임)</span></div>
@@ -63,32 +64,32 @@
   </div>
 
   <h2>문제 정의</h2>
-  <p>개인이 운영하는 서비스는 장애를 24시간 지켜볼 사람이 없고, 실수 한 번(트래픽 폭주, 잘못된 배포)이 곧바로 청구서 폭탄이나 장시간 장애로 이어진다. 이 프로젝트의 목표는 세 가지다.</p>
+  <p>개인 서비스는 장애를 24시간 지켜볼 사람이 없다. 실수 한 번이면 큰일이 난다. 트래픽이 폭주하면 예상 못 한 큰 요금(청구서 폭탄)이 나오고, 잘못 배포하면 장애가 오래간다. 그래서 목표를 세 가지로 잡았다.</p>
   <ul>
-    <li><b>보이게 한다</b> — 로그·메트릭·트레이스로 "무엇이, 어느 버전에서, 왜" 실패했는지 추적</li>
-    <li><b>스스로 되돌린다</b> — 사람의 개입 없이 수 분 안에 마지막 정상 버전으로 복구하고, 같은 결함이 다시 배포되지 않게 막음</li>
-    <li><b>예산을 넘지 않는다</b> — "무료 티어라 괜찮다"가 아니라, 공격·실수 상황에서도 비용 상한이 구조적으로 보장되게 함</li>
+    <li><b>보이게 한다</b> — 로그·메트릭(수치 기록)·트레이스(요청 경로 추적)로 "무엇이, 어느 버전에서, 왜" 실패했는지 찾는다.</li>
+    <li><b>스스로 되돌린다</b> — 사람 없이 몇 분 안에 마지막 정상 버전으로 복구한다. 같은 결함이 다시 배포되지 않게 막는다.</li>
+    <li><b>예산을 넘지 않는다</b> — "무료 티어라 괜찮다"로 끝내지 않는다. 공격이나 실수가 있어도 비용 상한이 지켜지도록 구조로 보장했다.</li>
   </ul>
 
   <h2>핵심 설계 결정</h2>
   <table>
     <tr><th style="width:24%">결정</th><th>이유</th></tr>
-    <tr><td>REST API (HTTP API 아님)</td><td>X-Ray 트레이싱과 사용량 계획(월 쿼터)은 REST 전용. 쿼터 상한 기준 요금 차이는 월 $0.1 미만</td></tr>
-    <tr><td>API → Lambda <b>alias</b> 연결</td><td><code>$LATEST</code>를 호출하면 롤백이 트래픽에 반영되지 않음. alias 하나로 카나리·롤백을 모두 제어</td></tr>
-    <tr><td>CodeDeploy 카나리 + 직접 구현 remediation</td><td>배포 시점은 관리형 서비스에 맡기고, 배포 이후(카나리를 우회한 핫픽스, 운영 중 드러난 결함)는 직접 구현해 둘 다 커버</td></tr>
-    <tr><td>코드 소유권 분리</td><td>Terraform은 함수 설정만, CI는 코드·버전만. 같은 리소스를 두 도구가 덮어쓰는 드리프트 제거</td></tr>
-    <tr><td>쿼터 = 비용 상한</td><td>스로틀은 속도 제한일 뿐 총량 제한이 아님(10rps면 월 2,592만 건 ≈ $90). 월 5만 건 쿼터로 API 비용 상한 ≈ $0.2</td></tr>
-    <tr><td>권한 경계(Permissions Boundary)</td><td>IaC 배포 역할이 "관리자 역할을 만들어 탈취"하는 권한 상승 경로를 구조적으로 차단</td></tr>
+    <tr><td>REST API (HTTP API 아님)</td><td>X-Ray(요청 추적 서비스)와 사용량 계획(월 쿼터)은 REST API만 지원한다. 쿼터 상한 기준 요금 차이는 월 $0.1 미만이다.</td></tr>
+    <tr><td>API → Lambda <b>alias</b>(함수 버전을 가리키는 이름표) 연결</td><td>API가 최신본(<code>$LATEST</code>)을 부르면 롤백해도 실제 트래픽에 반영되지 않는다. alias 하나로 카나리와 롤백을 모두 조절한다.</td></tr>
+    <tr><td>CodeDeploy 카나리(새 버전에 트래픽 10%만 먼저 보내 보는 배포 방식) + 직접 만든 remediation(복구) 함수</td><td>배포하는 순간은 관리형 서비스(CodeDeploy)에 맡긴다. 배포 이후 문제는 직접 만든 함수가 맡는다. 카나리를 건너뛴 핫픽스나 운영 중 드러난 결함이 여기에 해당한다. 둘을 합쳐 빈틈이 없게 했다.</td></tr>
+    <tr><td>코드 소유권 분리</td><td>Terraform은 함수 설정만, CI는 코드와 버전만 맡는다. 두 도구가 같은 리소스를 서로 덮어쓰는 문제(드리프트)를 없앴다.</td></tr>
+    <tr><td>쿼터 = 비용 상한</td><td>스로틀(초당 요청 제한)은 속도만 막고 총량은 못 막는다. 초당 10건이면 한 달 2,592만 건, 약 $90이다. 그래서 월 5만 건 쿼터를 걸어 API 비용 상한을 약 $0.2로 묶었다.</td></tr>
+    <tr><td>권한 경계(Permissions Boundary, 권한의 최대 한도선)</td><td>배포용 역할이 "관리자 역할을 만들어 그 권한을 가로채는" 길(권한 상승)을 구조적으로 막는다.</td></tr>
   </table>
 
   <h2>기술 스택</h2>
-  <p>API Gateway · Lambda · DynamoDB · CloudWatch(Logs/Metrics/Alarms/Dashboard/Logs Insights) · X-Ray · EventBridge · SNS · CodeDeploy · SSM Parameter Store · AWS Budgets · IAM OIDC · Terraform 1.10+ (AWS provider 6.x) · Python 3.12 · Powertools for AWS Lambda · GitHub Actions · pytest / moto</p>
+  <p>API Gateway(외부 요청을 받아 Lambda로 넘기는 입구) · Lambda(함수 실행) · DynamoDB(NoSQL DB) · CloudWatch(Logs/Metrics/Alarms/Dashboard/Logs Insights, 로그·감시) · X-Ray · EventBridge(이벤트 전달) · SNS(알림) · CodeDeploy(배포) · SSM Parameter Store(설정값 저장) · AWS Budgets(예산) · IAM OIDC(GitHub 인증 연동) · Terraform 1.10+ (AWS provider 6.x) · Python 3.12 · Powertools for AWS Lambda · GitHub Actions · pytest / moto(테스트 도구)</p>
 </section>
 
 <!-- 2. 아키텍처 -->
 <section class="page">
   <h2>아키텍처</h2>
-  <svg viewBox="0 -6 724 476" width="100%" role="img" aria-label="아키텍처 다이어그램">
+  <svg viewBox="0 -6 724 488" width="100%" role="img" aria-label="아키텍처 다이어그램">
     <defs>
       <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1b2430"/></marker>
       <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b4541a"/></marker>
@@ -145,88 +146,91 @@
     <path class="lr" d="M644 130 L 644 112 L 714 112 L 714 14 L 262 14 L 262 28" marker-end="url(#r)"/>
     <text class="l" x="520" y="10" fill="#b4541a">예산 100% 초과 시 API 스로틀 0</text>
 
-    <rect class="zone" x="4" y="406" width="712" height="58" rx="6"/>
+    <rect class="zone" x="4" y="406" width="712" height="70" rx="6"/>
     <text class="l" x="16" y="426" font-weight="700">상태 (SSM 표준 파라미터, 무료)</text>
     <text class="l" x="16" y="444">stable-version: 카나리+스모크 통과 버전 · previous-version: 직전 stable · deploy-freeze: 롤백/킬스위치 후 CI 배포 차단</text>
     <text class="l" x="16" y="458">CI가 배포 성공 시 previous←stable, stable←new 로 승격 · remediation이 롤백 시 stable←대상, previous←none (플래핑 방지)</text>
+    <text class="l" x="16" y="472">쉽게: 배포가 성공하면 기존 stable은 previous로 밀려나고 새 버전이 stable이 된다</text>
   </svg>
+  <p class="meta" style="margin:4px 0 0">용어: 5xx = 서버 쪽 오류 응답. 롤백 = 코드를 되돌리는 게 아니라 alias가 가리키는 버전 번호를 이전 정상 버전으로 바꾸는 것.</p>
 
   <h3>컴포넌트</h3>
   <table>
     <tr><th style="width:22%">구성</th><th>설정</th><th style="width:26%">비고</th></tr>
-    <tr><td>API Gateway</td><td><code>GET /health</code> · <code>POST /items</code> · <code>GET /items/{id}</code>, API 키 필수, 스로틀 5rps/버스트 10</td><td>실행 로그·상세 메트릭 OFF (비용)</td></tr>
-    <tr><td>Lambda (API)</td><td>Python 3.12, 256MB, Powertools 레이어(버전 고정), X-Ray Active, 본문 10KB 제한</td><td>설정=Terraform, 코드=CI</td></tr>
-    <tr><td>Lambda (보조)</td><td>remediation(알람→롤백), killswitch(예산→차단), 128MB</td><td>권한 경계 적용</td></tr>
-    <tr><td>DynamoDB</td><td><code>items</code>(PK id), On-Demand, PITR, AWS 소유 키 암호화</td><td>월 1원 미만</td></tr>
-    <tr><td>Terraform</td><td>bootstrap(state·OIDC·역할) + dev 환경, 모듈 9개, S3 네이티브 락</td><td>DynamoDB 락 테이블 불필요</td></tr>
+    <tr><td>API Gateway</td><td><code>GET /health</code> · <code>POST /items</code> · <code>GET /items/{id}</code>. API 키 필수. 스로틀은 초당 5건, 순간 최대 10건(버스트).</td><td>실행 로그·상세 메트릭은 끔 (비용)</td></tr>
+    <tr><td>Lambda (API)</td><td>Python 3.12, 메모리 256MB, Powertools 레이어(버전 고정), X-Ray Active, 요청 본문 10KB 제한</td><td>설정은 Terraform, 코드는 CI</td></tr>
+    <tr><td>Lambda (보조)</td><td>remediation(알람 → 롤백), killswitch(예산 초과 → 차단). 메모리 128MB</td><td>권한 경계 적용</td></tr>
+    <tr><td>DynamoDB</td><td><code>items</code> 테이블(키는 id), On-Demand(쓴 만큼 과금), PITR(시점 복구), AWS 소유 키로 암호화</td><td>월 1원 미만</td></tr>
+    <tr><td>Terraform</td><td>bootstrap(state 저장소·OIDC·역할) + dev 환경, 모듈 9개, S3 네이티브 락(동시 작업 잠금)</td><td>DynamoDB 락 테이블 불필요</td></tr>
   </table>
 </section>
 
 <!-- 3. 자가복구 -->
 <section class="page">
   <h2>자가복구 — 2단 자동 롤백</h2>
-  <p>롤백 기회는 두 번이다. <b>배포하는 순간</b>에는 CodeDeploy가 트래픽 10%로 새 버전을 5분간 관찰하고, <b>배포 이후</b>에는 알람이 EventBridge를 거쳐 직접 구현한 remediation 함수를 깨운다.</p>
+  <p>롤백 기회는 두 번이다. <b>배포하는 순간</b>에는 CodeDeploy가 트래픽 10%만 새 버전으로 보내 5분간 지켜본다. <b>배포한 이후</b>에는 알람이 EventBridge를 거쳐 직접 만든 remediation 함수를 깨운다.</p>
 
   <h3>런타임 remediation 의사결정</h3>
   <div class="flow">
     <div><b>1. 필터</b>ALARM 상태가 아니면 무시</div>
-    <div><b>2. 위임</b>카나리 진행 중 / 최근 20분 내 실패 → CodeDeploy 소관</div>
-    <div><b>3. 중복 방지</b>이미 동결 + live=stable → 추가 조치 없이 알림</div>
+    <div><b>2. 위임</b>카나리 진행 중이거나 최근 20분 내 실패했으면 CodeDeploy 담당</div>
+    <div><b>3. 중복 방지</b>이미 stable로 돌아가 있고 동결도 끝났으면, 같은 알람이 또 와도 롤백 없이 알림만</div>
     <div><b>4. 대상 결정</b>stable / previous / 수동</div>
     <div><b>5. 실행</b>alias 갱신 → 상태 갱신 → 배포 동결 → 메일</div>
   </div>
+  <p style="font-size:9pt;color:var(--muted)">용어: live = 지금 서비스 중인 버전, stable = 검증 통과한 마지막 정상 버전, previous = 그 직전 정상 버전.</p>
   <table>
     <tr><th>상황</th><th>버전 상태</th><th>처리</th></tr>
-    <tr><td>카나리를 우회한 핫픽스가 장애</td><td>live=7, stable=5</td><td>v5로 롤백</td></tr>
+    <tr><td>카나리를 건너뛴 핫픽스가 장애</td><td>live=7, stable=5</td><td>v5로 롤백</td></tr>
     <tr><td>검증을 통과한 버전이 운영 중 장애</td><td>live=stable=5, previous=4</td><td>v4로 롤백, previous 비움</td></tr>
     <tr><td>되돌아갈 버전 없음 (최초 배포)</td><td>live=stable, previous=none</td><td>롤백 없이 동결 + "수동 조치 필요" 메일</td></tr>
-    <tr><td>두 알람(5xx율·Errors) 동시 발생</td><td>첫 실행이 이미 롤백·동결</td><td>두 번째 실행은 <code>already_frozen</code></td></tr>
+    <tr><td>두 알람(5xx율·Errors) 동시 발생</td><td>첫 실행이 이미 롤백·동결함</td><td>두 번째 실행은 <code>already_frozen</code>(이미 동결됨)</td></tr>
   </table>
 
   <h3>설계하며 막은 실패 모드</h3>
   <div class="grid2">
-    <div class="card"><h4>연쇄 롤백</h4><p>CodeDeploy가 먼저 롤백을 끝낸 뒤 알람 이벤트가 늦게 도착하면 "진행 중 배포 없음"으로 보여, 정상 버전을 한 단계 더 되돌릴 수 있다 → 최근 20분 내 실패·중단 배포도 CodeDeploy 소관으로 판단.</p></div>
-    <div class="card"><h4>플래핑</h4><p>롤백 후 같은 알람이 다시 울리면 나쁜 버전으로 되돌아갈 수 있다 → 롤백된 버전을 새 stable로, previous는 비워 되돌아갈 경로를 끊음.</p></div>
-    <div class="card"><h4>재배포 사고</h4><p>자동 롤백 직후 다음 push가 같은 결함을 다시 배포 → <code>deploy-freeze</code>로 CI 차단, 원인 수정 후 수동 해제.</p></div>
-    <div class="card"><h4>저트래픽 카나리</h4><p>개인 서비스는 평소 요청이 0건이라 카나리 5분 동안 알람이 판단할 데이터가 없다 → 카나리 동안 CI가 합성 트래픽(2rps × 7분) 발생, 알람은 분당 20건 미만이면 0%로 처리해 오탐 방지.</p></div>
+    <div class="card"><h4>연쇄 롤백</h4><p>CodeDeploy가 먼저 롤백했는데 알람이 늦게 오면, "진행 중 배포 없음"으로 보여 정상 버전을 또 되돌린다. 그래서 최근 20분 내 실패·중단 배포도 CodeDeploy 담당으로 본다.</p></div>
+    <div class="card"><h4>플래핑(왔다 갔다 반복)</h4><p>롤백 뒤 같은 알람이 또 울리면 나쁜 버전으로 돌아갈 수 있다. 그래서 롤백한 버전을 새 stable로 두고 previous는 비워 길을 끊었다.</p></div>
+    <div class="card"><h4>재배포 사고</h4><p>롤백 직후 다음 push가 같은 결함을 다시 배포할 수 있다. <code>deploy-freeze</code>(배포 동결)로 CI를 막고, 원인을 고친 뒤 수동으로 푼다.</p></div>
+    <div class="card"><h4>저트래픽 카나리</h4><p>평소 요청이 0건이라 카나리 5분 동안 알람이 판단할 데이터가 없다. 그래서 CI가 가짜 요청(합성 트래픽, 초당 2건 × 7분)을 보낸다. 알람은 분당 20건 미만이면 0%로 처리해 오탐을 막는다.</p></div>
   </div>
 
   <h3>복구를 증명하는 장애 시연</h3>
-  <p>Lambda 버전은 환경변수까지 스냅샷한다는 점을 이용했다. <code>scripts/chaos_bad_release.sh</code>는 <code>FAULT_RATE=0.5</code>인 버전을 발행해 live에 직접 올리고(카나리 우회), 3rps 부하를 건다. 예상 흐름은 다음과 같다.</p>
+  <p>Lambda 버전은 환경변수까지 저장한다. <code>scripts/chaos_bad_release.sh</code>는 <code>FAULT_RATE=0.5</code>(요청의 절반을 일부러 실패시킴)인 버전을 만든다. 그 버전을 카나리 없이 live에 바로 올리고, 초당 3건 부하를 건다. 예상 흐름은 다음과 같다.</p>
   <div class="flow">
     <div><b>0분</b>장애 버전 live 반영, 응답의 약 50%가 502</div>
     <div><b>~3분</b>5xx율 알람 ALARM</div>
     <div><b>~3.5분</b>EventBridge → remediation → alias를 stable로</div>
     <div><b>~4분</b>200 응답 복귀, 메일 수신, 배포 동결</div>
   </div>
-  <div class="status">구현 상태: 코드와 IaC는 완성됐고 단위 테스트·정적 검증·실제 계정 대상 <code>terraform plan</code>까지 통과했다. 실제 배포와 장애 시연 결과(대시보드 캡처, 복구 시간 측정)는 배포 후 이 섹션에 추가할 예정이다.</div>
+  <div class="status">구현 상태: 코드와 IaC(코드로 쓴 인프라)는 완성됐다. 단위 테스트, 정적 검증, 실제 계정 대상 <code>terraform plan</code>까지 통과했다. 실제 배포와 장애 시연 결과(대시보드 캡처, 복구 시간 측정)는 배포 후 이 섹션에 추가할 예정이다.</div>
 </section>
 
 <!-- 4. CI/CD + 보안 -->
 <section class="page">
-  <h2>CI/CD</h2>
+  <h2>CI/CD (코드 검사와 자동 배포)</h2>
   <table>
     <tr><th style="width:16%">워크플로</th><th style="width:14%">트리거</th><th>단계</th></tr>
-    <tr><td><code>ci.yml</code></td><td>Pull Request</td><td>ruff · pytest · <code>terraform fmt/validate</code> → 읽기 전용 역할로 <code>plan</code> → PR 코멘트</td></tr>
-    <tr><td><code>deploy.yml</code></td><td>main push · 수동</td><td>테스트 → 배포 동결 확인 → <code>terraform apply</code> → 버전 발행 → CodeDeploy 카나리(합성 트래픽 포함) → 스모크(health + 쓰기/읽기 왕복) → stable 승격</td></tr>
+    <tr><td><code>ci.yml</code></td><td>Pull Request</td><td>ruff(코드 검사) · pytest(테스트) · <code>terraform fmt/validate</code> → 읽기 전용 역할로 <code>plan</code>(변경 미리보기) → PR 코멘트</td></tr>
+    <tr><td><code>deploy.yml</code></td><td>main push · 수동</td><td>테스트 → 배포 동결 확인 → <code>terraform apply</code>(실제 반영) → 버전 발행 → CodeDeploy 카나리(합성 트래픽 포함) → 스모크 테스트(health + 쓰기/읽기 왕복) → stable 승격</td></tr>
   </table>
-  <p>AWS 연결 전(저장소 변수 미등록)에는 배포 job이 자동으로 건너뛰어지고 테스트만 실행된다. 동시 배포는 <code>concurrency</code>로 직렬화했다.</p>
+  <p>AWS 연결 전(저장소 변수 미등록)에는 배포 job을 자동으로 건너뛰고 테스트만 돈다. 동시에 배포가 겹치지 않도록 <code>concurrency</code>로 한 줄로 세웠다.</p>
 
   <h2 style="margin-top:16px">보안</h2>
   <div class="grid2">
-    <div class="card"><h4>장기 Access Key 0개</h4><p>GitHub OIDC로 실행마다 임시 자격증명을 발급한다. 신뢰 정책의 <code>sub</code> 클레임으로 역할을 분리했다.</p>
+    <div class="card"><h4>장기 Access Key 0개</h4><p>GitHub OIDC(GitHub가 "이 요청은 내 저장소가 보냈다"고 보증하면 AWS가 임시 권한을 주는 방식)로 실행할 때마다 임시 자격증명을 받는다. <code>sub</code> 값(요청자 표시)으로 역할을 나눴다.</p>
       <ul><li><code>repo:…:ref:refs/heads/main</code> → 배포 역할</li><li><code>repo:…:pull_request</code> → 읽기 전용 plan 역할</li></ul></div>
-    <div class="card"><h4>권한 경계로 권한 상승 차단</h4><p>Terraform 배포 역할은 IAM 역할을 만들 수 있어야 하므로, 그대로 두면 관리자 역할을 만들어 탈취할 수 있다. 배포 역할은 <code>iam:PermissionsBoundary</code> 조건을 만족하는 역할만 <code>/selfheal/</code> path에 생성할 수 있고, 경계를 제거하거나 bootstrap 역할을 수정할 수 없다.</p></div>
-    <div class="card"><h4>리소스 스코프</h4><p>Lambda·DynamoDB·SNS·SSM·CloudWatch·CodeDeploy 권한을 <code>selfheal-*</code> ARN으로 한정했다. API Gateway는 ARN이 랜덤 ID라 리전 단위로 한정했다(알려진 한계).</p></div>
-    <div class="card"><h4>비밀 정보 관리</h4><p>알림 메일은 GitHub Secret → <code>TF_VAR</code>로 주입하고 <code>sensitive</code>로 표시해 PR plan 코멘트에 노출되지 않게 했다. API 키는 CI에서 마스킹한다. state 버킷은 버전관리·SSE-S3·퍼블릭 차단·TLS 강제를 적용했다.</p></div>
+    <div class="card"><h4>권한 경계로 권한 상승 차단</h4><p>배포 역할은 IAM 역할을 만들 수 있어야 해서, 그냥 두면 관리자 역할을 만들어 권한을 가로챌 수 있다. 그래서 "이 한도선이 붙은 역할만 만들 수 있다"는 규칙(<code>iam:PermissionsBoundary</code> 조건)을 걸었다. 만든 역할이 아무리 강해도 한도선 밖 권한은 못 쓴다. 경계를 제거하거나 bootstrap 역할을 수정하는 것도 막았다(<code>/selfheal/</code> path 한정).</p></div>
+    <div class="card"><h4>리소스 스코프(권한 범위)</h4><p>Lambda·DynamoDB·SNS·SSM·CloudWatch·CodeDeploy 권한은 이름이 <code>selfheal-*</code>인 리소스(ARN)로 한정했다. API Gateway는 ARN이 랜덤 ID라 리전 단위로 한정했다. 알려진 한계다.</p></div>
+    <div class="card"><h4>비밀 정보 관리</h4><p>알림 메일은 GitHub Secret → <code>TF_VAR</code>로 넣고 <code>sensitive</code>로 표시해 PR plan 코멘트에 안 보이게 했다. API 키는 CI 로그에서 가린다. state 버킷은 버전관리, SSE-S3 암호화, 퍼블릭 차단, TLS 강제를 적용했다.</p></div>
   </div>
-  <div class="note">SNS를 암호화하지 않은 것은 의도한 선택이다. CloudWatch 알람은 AWS 관리형 키(aws/sns)로 암호화된 토픽에 발행할 수 없고, 고객 관리형 KMS 키는 월 $1로 예산 대비 과하다. 토픽에는 알람 메타데이터만 흐른다.</div>
+  <div class="note">SNS를 암호화하지 않은 것은 의도한 선택이다. CloudWatch 알람은 AWS 관리형 키(aws/sns)로 암호화한 토픽에 발행할 수 없다. 고객 관리형 KMS 키는 월 $1이라 예산 대비 과하다. 토픽에는 알람 메타데이터(부가 정보)만 흐른다.</div>
 </section>
 
 <!-- 5. 비용 -->
 <section class="page">
   <h2>비용 설계 — "무료 티어"가 아니라 "상한"</h2>
-  <p>2025년 7월 프리티어 개편 이후 기존 계정은 12개월 무료 혜택(API Gateway 등)이 만료됐을 수 있다. 그래서 <b>무료 티어가 전혀 없다고 가정하고</b>, 쿼터 월 5만 건을 전부 소진하는 최악의 경우로 계산했다.</p>
+  <p>2025년 7월 프리티어 개편 이후 기존 계정의 12개월 무료 혜택(API Gateway 등)이 끝났을 수 있다. 그래서 <b>무료 티어가 전혀 없다고 가정</b>했다. 쿼터 월 5만 건을 전부 쓰는 최악의 경우로 계산했다.</p>
   <table>
     <tr><th>항목</th><th>산정 근거</th><th class="num">월</th></tr>
     <tr><td>API Gateway REST</td><td>5만 건 × 약 $4/백만</td><td class="num">$0.20</td></tr>
@@ -235,47 +239,47 @@
     <tr><td>CloudWatch Logs</td><td>수집 약 0.1GB × $0.76</td><td class="num">$0.08</td></tr>
     <tr><td>X-Ray</td><td>기본 샘플링, 최대 5만 트레이스 × $5/백만</td><td class="num">$0.25</td></tr>
     <tr><td>알람 5 · 대시보드 1 · 저장 쿼리</td><td>상시 무료 한도(알람 10 · 대시보드 3) 이내</td><td class="num">$0</td></tr>
-    <tr><td>S3 · SSM · EventBridge · SNS · CodeDeploy · Budgets</td><td>무료 또는 극소. Budgets는 Budget Action 미사용이라 무료</td><td class="num">~$0.01</td></tr>
+    <tr><td>S3 · SSM · EventBridge · SNS · CodeDeploy · Budgets</td><td>무료 또는 극소. Budgets는 Budget Action을 안 써서 무료</td><td class="num">~$0.01</td></tr>
     <tr><th colspan="2">합계 (최악)</th><th class="num">≈ $0.6 (약 900원)</th></tr>
   </table>
 
-  <h3>다층 예산 방어 — AWS에는 하드 지출 상한이 없다</h3>
+  <h3>다층 예산 방어 — AWS에는 하드 지출 상한(넘으면 강제로 멈추는 한도)이 없다</h3>
   <div class="flow">
     <div><b>① 쿼터</b>사용량 계획 월 5만 건 = 요청 수 자체의 상한 (실질적 비용 상한)</div>
-    <div><b>② 조기 경보</b>Budgets $10(계정 전체): 실제 50% · 예측 80% 메일</div>
-    <div><b>③ 킬스위치</b>실제 100% → SNS → Lambda → API 스로틀 0 + 배포 동결</div>
+    <div><b>② 조기 경보</b>Budgets $10(계정 전체): 실제 50% · 예측 80%에 메일</div>
+    <div><b>③ 킬스위치(긴급 차단)</b>실제 100% → SNS → Lambda → API 스로틀 0 + 배포 동결</div>
   </div>
-  <p>킬스위치는 Budget Action(유료 가능)이 아니라 SNS 알림 → Lambda로 구현해 추가 비용이 없다. Budgets 데이터는 수 시간 지연되므로 킬스위치는 마지막 안전망이고, 실질적인 상한은 ①이다.</p>
+  <p>킬스위치는 Budget Action(유료일 수 있음) 대신 SNS 알림 → Lambda로 만들어 추가 비용이 없다. Budgets 데이터는 몇 시간 늦게 갱신된다. 그래서 킬스위치는 마지막 안전망이고, 실질적인 상한은 ①이다.</p>
 
   <h3>의도적으로 쓰지 않은 것</h3>
   <table>
     <tr><th style="width:34%">제외</th><th>이유</th></tr>
-    <tr><td>NAT Gateway · VPC 내 Lambda</td><td>NAT 하나에 월 약 $43. 이 워크로드는 VPC가 필요 없음</td></tr>
-    <tr><td>API GW 메서드 상세 메트릭</td><td>유료 커스텀 메트릭으로 과금. 스테이지 기본 메트릭으로 충분</td></tr>
-    <tr><td>API GW 실행 로그</td><td>보존기간 무제한 로그 그룹이 자동 생성됨 → 액세스 로그(14일)로 대체</td></tr>
-    <tr><td>고객 관리형 KMS · Secrets Manager</td><td>키당 월 $1, 시크릿당 월 $0.4. 관리할 시크릿이 없음(OIDC)</td></tr>
-    <tr><td>CloudWatch Synthetics · Lambda Insights</td><td>실행·함수당 과금. 합성 트래픽은 CI에서 필요할 때만 발생</td></tr>
+    <tr><td>NAT Gateway · VPC 내 Lambda</td><td>NAT 하나에 월 약 $43이다. 이 워크로드는 VPC(가상 사설망)가 필요 없다.</td></tr>
+    <tr><td>API GW 메서드 상세 메트릭</td><td>유료 커스텀 메트릭으로 과금된다. 스테이지 기본 메트릭이면 충분하다.</td></tr>
+    <tr><td>API GW 실행 로그</td><td>보존기간 무제한 로그 그룹이 자동 생성된다. 액세스 로그(14일)로 대체했다.</td></tr>
+    <tr><td>고객 관리형 KMS · Secrets Manager</td><td>키당 월 $1, 시크릿당 월 $0.4다. OIDC를 써서 관리할 시크릿이 없다.</td></tr>
+    <tr><td>CloudWatch Synthetics · Lambda Insights</td><td>실행·함수 단위로 과금된다. 합성 트래픽은 CI에서 필요할 때만 만든다.</td></tr>
   </table>
 </section>
 
 <!-- 6. 검토 + 검증 -->
 <section class="page">
   <h2>설계 검토 — 초안의 결함 31건</h2>
-  <p>초안 설계를 그대로 구현하지 않고, 실제 코드로 옮기면서 <code>validate</code>, 실제 계정 대상 <code>plan</code>, 단위 테스트로 검증했다. 그 과정에서 발견한 결함은 다음과 같다(전체 목록은 <code>docs/REVIEW.md</code>).</p>
+  <p>초안 설계를 그대로 만들지 않았다. 코드로 옮기며 <code>validate</code>, 실제 계정 대상 <code>plan</code>, 단위 테스트로 검증했다. 그 과정에서 찾은 결함은 다음과 같다(전체 목록은 <code>docs/REVIEW.md</code>).</p>
   <table>
     <tr><th style="width:9%">심각도</th><th style="width:38%">초안</th><th>문제 → 수정</th></tr>
-    <tr><td><span class="tag t-crit">치명</span></td><td>HTTP API + X-Ray 체인 시각화</td><td>X-Ray는 REST API만 지원 → REST 채택</td></tr>
-    <tr><td><span class="tag t-crit">치명</span></td><td>"별칭으로 이전 버전 롤백"</td><td>API가 <code>$LATEST</code>를 호출해 롤백이 무효 → alias 통합 + 버전 발행</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>HTTP API + X-Ray로 요청이 지나간 경로를 그림으로 보기</td><td>X-Ray는 REST API만 지원 → REST 채택</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>"별칭으로 이전 버전 롤백"</td><td>API가 <code>$LATEST</code>를 불러 롤백이 소용없음 → alias 통합 + 버전 발행</td></tr>
     <tr><td><span class="tag t-crit">치명</span></td><td>롤백 대상 결정 로직 없음</td><td>stable/previous 상태 관리, 플래핑 방지</td></tr>
-    <tr><td><span class="tag t-crit">치명</span></td><td>카나리·알람 기반 검증</td><td>저트래픽이라 알람 데이터 없음 → 합성 트래픽</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>카나리·알람 기반 검증</td><td>트래픽이 적어 알람 데이터 없음 → 합성 트래픽</td></tr>
     <tr><td><span class="tag t-crit">치명</span></td><td>(계정 상태 미확인)</td><td>OIDC Provider가 이미 있어 apply 실패 → 재사용 옵션</td></tr>
-    <tr><td><span class="tag t-crit">치명</span></td><td>(구현 중 테스트로 발견)</td><td>DynamoDB Decimal이 문자열로 직렬화 → 커스텀 serializer</td></tr>
+    <tr><td><span class="tag t-crit">치명</span></td><td>(구현 중 테스트로 발견)</td><td>DynamoDB Decimal(소수 타입)이 문자열로 바뀜 → 커스텀 serializer(변환 코드)</td></tr>
     <tr><td><span class="tag t-high">높음</span></td><td>"초당 10건 스로틀로 비용 방지"</td><td>총량 제한이 아님(최악 약 $90) → 쿼터 + Budgets + 킬스위치</td></tr>
-    <tr><td><span class="tag t-high">높음</span></td><td>"최소권한 IAM"</td><td>IaC 역할의 권한 상승 경로 → 권한 경계</td></tr>
-    <tr><td><span class="tag t-high">높음</span></td><td>자동 롤백 + CI/CD</td><td>재배포 사고·이중/연쇄 롤백 → 배포 동결, CodeDeploy 위임</td></tr>
-    <tr><td><span class="tag t-high">높음</span></td><td>로그·메트릭 수집</td><td>상세 메트릭 과금, 실행 로그 무제한 보존 → OFF</td></tr>
-    <tr><td><span class="tag t-mid">중간</span></td><td>DynamoDB 쓰로틀 자동복구</td><td>On-Demand에서는 시연 불가 → 제거</td></tr>
-    <tr><td><span class="tag t-mid">중간</span></td><td>DynamoDB state 락 테이블</td><td>deprecated → S3 네이티브 락</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>"최소권한 IAM"</td><td>IaC 역할에 권한 상승 경로가 있음 → 권한 경계</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>자동 롤백 + CI/CD</td><td>재배포 사고, 이중·연쇄 롤백 → 배포 동결, CodeDeploy에 위임</td></tr>
+    <tr><td><span class="tag t-high">높음</span></td><td>로그·메트릭 수집</td><td>상세 메트릭 과금, 실행 로그 무제한 보존 → 끔(OFF)</td></tr>
+    <tr><td><span class="tag t-mid">중간</span></td><td>DynamoDB 쓰로틀 자동복구</td><td>On-Demand는 용량이 자동으로 늘어나 일부러 쓰로틀을 만들기 어렵다 → 시연 불가, 제거</td></tr>
+    <tr><td><span class="tag t-mid">중간</span></td><td>DynamoDB state 락 테이블</td><td>deprecated(더는 쓰지 말라고 권장함) → S3 네이티브 락</td></tr>
   </table>
 
   <h2 style="margin-top:14px">검증</h2>
@@ -290,10 +294,10 @@
 
   <h2 style="margin-top:14px">배운 점 · 다음 단계</h2>
   <ul>
-    <li><b>"무료"는 설계가 아니다.</b> 무료 티어가 아니라 쿼터처럼 구조적인 상한으로 비용을 보장해야 한다.</li>
-    <li><b>자동화는 자기 자신과 경합한다.</b> 관리형 롤백과 직접 구현한 롤백, CI가 서로를 되돌리지 않도록 위임·동결 규칙을 명시해야 한다.</li>
-    <li><b>설계 문서는 코드로 검증해야 한다.</b> 31건 중 다수는 문서만 읽어서는 보이지 않았고, plan과 테스트에서 드러났다.</li>
-    <li>다음 단계: CodeDeploy <code>BeforeAllowTraffic</code> 훅으로 새 버전 사전 검증, Trivy/checkov IaC 스캔, Slack 알림, 운영 환경 계정 분리.</li>
+    <li><b>"무료"는 설계가 아니다.</b> 무료 티어에 기대지 말고, 쿼터처럼 구조적인 상한으로 비용을 지켜야 한다.</li>
+    <li><b>자동화끼리 서로 부딪친다.</b> 관리형 롤백, 직접 만든 롤백, CI가 서로를 되돌리지 않게 위임·동결 규칙을 정해야 한다.</li>
+    <li><b>설계 문서는 코드로 검증해야 한다.</b> 31건 중 다수는 문서만 읽어서는 안 보였다. plan과 테스트에서 드러났다.</li>
+    <li>다음 단계: CodeDeploy <code>BeforeAllowTraffic</code> 훅(트래픽 받기 전 점검)으로 새 버전 사전 검증, Trivy/checkov IaC 보안 스캔, Slack 알림, 운영 환경 계정 분리.</li>
   </ul>
 </section>
 
